@@ -48,7 +48,7 @@
 </head>
 <body>
   <h1>הצבעות מחיקה פעילות בויקיפדיה</h1>
-  <div id="status">טוען נתונים מדף הקטגוריה...</div>
+  <div id="status">טוען נתונים...</div>
   <table id="results" style="display:none">
     <thead>
       <tr>
@@ -61,34 +61,54 @@
   </table>
 
   <script>
-    async function fetchCategoryPageHTML() {
-      const url = "https://corsproxy.io/?" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
-      const res = await fetch(url);
-      const html = await res.text();
-      const parser = new DOMParser();
-      return parser.parseFromString(html, "text/html");
+    async function fetchCategoryMembers() {
+      const apiUrl = `https://he.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור&cmprop=title&cmlimit=50&format=json&origin=*`;
+      try {
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+        console.log("Category members:", data);
+        return data.query.categorymembers.map(cm => ({ title: cm.title }));
+      } catch (e) {
+        console.error("Error fetching category members:", e);
+        throw e;
+      }
     }
 
     async function fetchWikitext(title) {
       const apiUrl = `https://he.wikipedia.org/w/api.php?origin=*&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      const page = data.query.pages[0];
-      return page.revisions?.[0]?.slots?.main?.content || '';
+      try {
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+        const page = data.query.pages[0];
+        const content = page.revisions?.[0]?.slots?.main?.content || '';
+        console.log(`Wikitext for ${title}:`, content.substring(0, 100) + "...");
+        return content;
+      } catch (e) {
+        console.error(`Error fetching wikitext for ${title}:`, e);
+        return '';
+      }
     }
 
     function extractVotingSection(wikitext) {
-      const start = wikitext.indexOf('== הצבעה ==');
-      if (start === -1) return null;
-      const rest = wikitext.slice(start + '== הצבעה =='.length);
-      const endMatch = rest.match(/==\s.*?==/);
+      const regex = /==\s*הצבעה\s*==/;
+      const startMatch = wikitext.match(regex);
+      if (!startMatch) {
+        console.log("No voting section found");
+        return null;
+      }
+      const start = startMatch.index;
+      const rest = wikitext.slice(start + startMatch[0].length);
+      const endMatch = rest.match(/==\s*.*?==/);
       const end = endMatch ? rest.indexOf(endMatch[0]) : rest.length;
-      return rest.slice(0, end).trim();
+      const section = rest.slice(0, end).trim();
+      console.log("Voting section:", section.substring(0, 100) + "...");
+      return section;
     }
 
     function countVotes(text) {
-      const support = (text.match(/{{למחוק}}/g) || []).length;
-      const oppose = (text.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
+      const support = (text.match(/{{למחוק}}|\*\s*למחוק/gi) || []).length;
+      const oppose = (text.match(/{{להשאיר}}|{{לשמור}}|\*\s*להשאיר|\*\s*לשמור/gi) || []).length;
+      console.log("Vote count:", { support, oppose });
       return { support, oppose };
     }
 
@@ -98,22 +118,26 @@
       const tbody = table.querySelector("tbody");
 
       try {
-        const doc = await fetchCategoryPageHTML();
-        const links = [...doc.querySelectorAll("#mw-pages a")];
+        console.log("Starting data fetch...");
+        const links = await fetchCategoryMembers();
         if (links.length === 0) {
           status.textContent = "לא נמצאו הצבעות פעילות.";
+          console.log("No active votes found.");
           return;
         }
 
-        for (const a of links) {
-          const pageTitle = a.title;
-          const displayTitle = a.textContent;
+        for (const link of links) {
+          const pageTitle = link.title;
+          console.log(`Processing page: ${pageTitle}`);
           const wikitext = await fetchWikitext(pageTitle);
           const votingSection = extractVotingSection(wikitext);
           if (!votingSection) continue;
 
           const { support, oppose } = countVotes(votingSection);
-          if (support + oppose === 0) continue;
+          if (support + oppose === 0) {
+            console.log(`No votes found for ${pageTitle}`);
+            continue;
+          }
 
           const tr = document.createElement("tr");
           if (support > oppose) {
@@ -123,7 +147,7 @@
           }
 
           tr.innerHTML = `
-            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}" target="_blank">${displayTitle}</a></td>
+            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}" target="_blank">${pageTitle}</a></td>
             <td>${support}</td>
             <td>${oppose}</td>
           `;
@@ -133,12 +157,14 @@
         if (tbody.children.length > 0) {
           status.style.display = "none";
           table.style.display = "table";
+          console.log("Table displayed with", tbody.children.length, "rows");
         } else {
           status.textContent = "לא נמצאו הצבעות פעילות.";
+          console.log("No active votes after processing.");
         }
 
       } catch (e) {
-        console.error(e);
+        console.error("Error in run:", e);
         status.textContent = "אירעה שגיאה בטעינת הנתונים.";
       }
     }
