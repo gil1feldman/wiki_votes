@@ -31,6 +31,12 @@
     th {
       background-color: #e0e0e0;
     }
+    tr.majority-delete {
+      background-color: #ffe5e5;
+    }
+    tr.majority-keep {
+      background-color: #e5ffe5;
+    }
     a {
       color: #0066cc;
       text-decoration: none;
@@ -68,12 +74,24 @@
       const url = `${apiBase}&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
       const res = await fetch(url);
       const data = await res.json();
-      return data.query.pages[0].revisions[0].slots.main.content;
+      const page = data.query.pages[0];
+      return page.revisions[0].slots.main.content;
     }
 
-    function countVotes(wikitext) {
-      const support = (wikitext.match(/{{למחוק}}/g) || []).length;
-      const oppose = (wikitext.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
+    function extractVotingSection(wikitext) {
+      const start = wikitext.indexOf('== הצבעה ==');
+      if (start === -1) return null;
+
+      const rest = wikitext.slice(start + '== הצבעה =='.length);
+      const endMatch = rest.match(/==\s.*?==/);
+      const end = endMatch ? rest.indexOf(endMatch[0]) : rest.length;
+
+      return rest.slice(0, end).trim();
+    }
+
+    function countVotes(votingText) {
+      const support = (votingText.match(/{{למחוק}}/g) || []).length;
+      const oppose = (votingText.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
       return { support, oppose };
     }
 
@@ -86,12 +104,20 @@
         const pages = await fetchCategoryPages();
         for (const page of pages) {
           const wikitext = await fetchWikitext(page.title);
-          const { support, oppose } = countVotes(wikitext);
+          const votingSection = extractVotingSection(wikitext);
+          if (!votingSection) continue;
 
+          const { support, oppose } = countVotes(votingSection);
           if (support + oppose === 0) continue;
 
           const displayTitle = page.title.replace("ויקיפדיה:רשימת מועמדים למחיקה/", "");
           const tr = document.createElement("tr");
+          if (support > oppose) {
+            tr.classList.add("majority-delete");
+          } else if (oppose > support) {
+            tr.classList.add("majority-keep");
+          }
+
           tr.innerHTML = `
             <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(page.title)}" target="_blank">${displayTitle}</a></td>
             <td>${support}</td>
