@@ -33,29 +33,31 @@
   </style>
 </head>
 <body>
-  <h1>רשימת הצבעות מחיקה מוויקיפדיה</h1>
-  <div id="status">טוען נתונים...</div>
+  <h1>הצבעות מחיקה פעילות בויקיפדיה</h1>
+  <div id="status">טוען את עץ הקטגוריות...</div>
   <ul id="vote-list"></ul>
 
   <script>
-    async function fetchCategoryHTML() {
-      const url = "https://corsproxy.io/?" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
+    async function fetchTreeHTML() {
+      const url = "https://corsproxy.io/?" + encodeURIComponent("https://he.wikipedia.org/w/index.php?title=מיוחד:עץ_קטגוריות&target=ויקיפדיה:_הצבעות_מחיקה_ושחזור&mode=all");
       const res = await fetch(url);
       const html = await res.text();
       const parser = new DOMParser();
       return parser.parseFromString(html, "text/html");
     }
 
-    async function showVotes() {
+    async function showVotesFromTree() {
       const status = document.getElementById("status");
       const list = document.getElementById("vote-list");
 
       try {
-        const doc = await fetchCategoryHTML();
-        const links = [...doc.querySelectorAll("#mw-pages a")];
+        const doc = await fetchTreeHTML();
+        const links = [...doc.querySelectorAll("a")].filter(a =>
+          a.href.includes("/wiki/ויקיפדיה:רשימת_מועמדים_למחיקה/")
+        );
 
         if (links.length === 0) {
-          status.textContent = "לא נמצאו הצבעות פעילות.";
+          status.textContent = "לא נמצאו הצבעות מחיקה.";
           return;
         }
 
@@ -66,13 +68,14 @@
           li.innerHTML = `<a href="https://he.wikipedia.org${a.getAttribute('href')}" target="_blank">${a.textContent}</a>`;
           list.appendChild(li);
         }
+
       } catch (err) {
         console.error(err);
         status.textContent = "אירעה שגיאה בטעינת הדף.";
       }
     }
 
-    showVotes();
+    showVotesFromTree();
   </script>
 </body>
 </html>
