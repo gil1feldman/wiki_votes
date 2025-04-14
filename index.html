@@ -2,174 +2,77 @@
 <html lang="he">
 <head>
   <meta charset="UTF-8">
-  <title>הצבעות מחיקה בויקיפדיה</title>
+  <title>רשימת הצבעות מחיקה</title>
   <style>
     body {
       direction: rtl;
       font-family: Arial, sans-serif;
       padding: 20px;
-      background-color: #f5f5f5;
     }
     h1 {
       text-align: center;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin: 5px 0;
+    }
+    a {
+      text-decoration: none;
+      color: #0066cc;
+    }
+    a:hover {
+      text-decoration: underline;
     }
     #status {
       text-align: center;
       margin-top: 20px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      background-color: white;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: center;
-    }
-    th {
-      background-color: #e0e0e0;
-    }
-    tr.majority-delete {
-      background-color: #ffe5e5;
-    }
-    tr.majority-keep {
-      background-color: #e5ffe5;
-    }
-    a {
-      color: #0066cc;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
   </style>
 </head>
 <body>
-  <h1>הצבעות מחיקה פעילות בויקיפדיה</h1>
+  <h1>רשימת הצבעות מחיקה מוויקיפדיה</h1>
   <div id="status">טוען נתונים...</div>
-  <table id="results" style="display:none">
-    <thead>
-      <tr>
-        <th>שם הערך</th>
-        <th>מצביעים למחוק</th>
-        <th>מצביעים להשאיר</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <ul id="vote-list"></ul>
 
   <script>
-    async function fetchCategoryMembers() {
-      const apiUrl = `https://he.wikipedia.org/w/api.php?action=query&list=categorymembers&cmtitle=קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור&cmprop=title&cmlimit=50&format=json&origin=*`;
-      try {
-        const res = await fetch(apiUrl);
-        const data = await res.json();
-        console.log("Category members:", data);
-        return data.query.categorymembers.map(cm => ({ title: cm.title }));
-      } catch (e) {
-        console.error("Error fetching category members:", e);
-        throw e;
-      }
+    async function fetchCategoryHTML() {
+      const url = "https://corsproxy.io/?" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
+      const res = await fetch(url);
+      const html = await res.text();
+      const parser = new DOMParser();
+      return parser.parseFromString(html, "text/html");
     }
 
-    async function fetchWikitext(title) {
-      const apiUrl = `https://he.wikipedia.org/w/api.php?origin=*&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
-      try {
-        const res = await fetch(apiUrl);
-        const data = await res.json();
-        const page = data.query.pages[0];
-        const content = page.revisions?.[0]?.slots?.main?.content || '';
-        console.log(`Wikitext for ${title}:`, content.substring(0, 100) + "...");
-        return content;
-      } catch (e) {
-        console.error(`Error fetching wikitext for ${title}:`, e);
-        return '';
-      }
-    }
-
-    function extractVotingSection(wikitext) {
-      const regex = /==\s*הצבעה\s*==/;
-      const startMatch = wikitext.match(regex);
-      if (!startMatch) {
-        console.log("No voting section found");
-        return null;
-      }
-      const start = startMatch.index;
-      const rest = wikitext.slice(start + startMatch[0].length);
-      const endMatch = rest.match(/==\s*.*?==/);
-      const end = endMatch ? rest.indexOf(endMatch[0]) : rest.length;
-      const section = rest.slice(0, end).trim();
-      console.log("Voting section:", section.substring(0, 100) + "...");
-      return section;
-    }
-
-    function countVotes(text) {
-      const support = (text.match(/{{למחוק}}|\*\s*למחוק/gi) || []).length;
-      const oppose = (text.match(/{{להשאיר}}|{{לשמור}}|\*\s*להשאיר|\*\s*לשמור/gi) || []).length;
-      console.log("Vote count:", { support, oppose });
-      return { support, oppose };
-    }
-
-    async function run() {
+    async function showVotes() {
       const status = document.getElementById("status");
-      const table = document.getElementById("results");
-      const tbody = table.querySelector("tbody");
+      const list = document.getElementById("vote-list");
 
       try {
-        console.log("Starting data fetch...");
-        const links = await fetchCategoryMembers();
+        const doc = await fetchCategoryHTML();
+        const links = [...doc.querySelectorAll("#mw-pages a")];
+
         if (links.length === 0) {
           status.textContent = "לא נמצאו הצבעות פעילות.";
-          console.log("No active votes found.");
           return;
         }
 
-        for (const link of links) {
-          const pageTitle = link.title;
-          console.log(`Processing page: ${pageTitle}`);
-          const wikitext = await fetchWikitext(pageTitle);
-          const votingSection = extractVotingSection(wikitext);
-          if (!votingSection) continue;
+        status.style.display = "none";
 
-          const { support, oppose } = countVotes(votingSection);
-          if (support + oppose === 0) {
-            console.log(`No votes found for ${pageTitle}`);
-            continue;
-          }
-
-          const tr = document.createElement("tr");
-          if (support > oppose) {
-            tr.classList.add("majority-delete");
-          } else if (oppose > support) {
-            tr.classList.add("majority-keep");
-          }
-
-          tr.innerHTML = `
-            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}" target="_blank">${pageTitle}</a></td>
-            <td>${support}</td>
-            <td>${oppose}</td>
-          `;
-          tbody.appendChild(tr);
+        for (const a of links) {
+          const li = document.createElement("li");
+          li.innerHTML = `<a href="https://he.wikipedia.org${a.getAttribute('href')}" target="_blank">${a.textContent}</a>`;
+          list.appendChild(li);
         }
-
-        if (tbody.children.length > 0) {
-          status.style.display = "none";
-          table.style.display = "table";
-          console.log("Table displayed with", tbody.children.length, "rows");
-        } else {
-          status.textContent = "לא נמצאו הצבעות פעילות.";
-          console.log("No active votes after processing.");
-        }
-
-      } catch (e) {
-        console.error("Error in run:", e);
-        status.textContent = "אירעה שגיאה בטעינת הנתונים.";
+      } catch (err) {
+        console.error(err);
+        status.textContent = "אירעה שגיאה בטעינת הדף.";
       }
     }
 
-    run();
+    showVotes();
   </script>
 </body>
 </html>
