@@ -4,48 +4,18 @@
   <meta charset="UTF-8">
   <title>הצבעות מחיקה בויקיפדיה</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      direction: rtl;
-      padding: 20px;
-      background-color: #f9f9f9;
-    }
-    h1 {
-      text-align: center;
-    }
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-top: 20px;
-      background-color: white;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 10px;
-      text-align: center;
-    }
-    th {
-      background-color: #eaeaea;
-    }
-    a {
-      color: #0077cc;
-      text-decoration: none;
-    }
-    a:hover {
-      text-decoration: underline;
-    }
-    #status {
-      text-align: center;
-      font-size: 1.2em;
-    }
+    body { font-family: Arial, sans-serif; direction: rtl; padding: 20px; background-color: #f9f9f9; }
+    h1 { text-align: center; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; background-color: white; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+    th { background-color: #eaeaea; }
+    a { color: #0077cc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    #status { text-align: center; font-size: 1.2em; }
   </style>
 </head>
 <body>
   <h1>הצבעות מחיקה פעילות בויקיפדיה</h1>
-  <p style="text-align:center;">
-    טבלה זו מציגה את הערכים שעליהם מתקיימת הצבעת מחיקה פעילה, 
-    כולל מספר המצביעים בעד מחיקת הערך ונגד מחיקתו (כלומר, בעד השארתו).
-  </p>
   <div id="status">טוען נתונים...</div>
   <table id="results" style="display:none">
     <thead>
@@ -59,63 +29,77 @@
   </table>
 
   <script>
-    async function fetchDeletionVotes() {
-      const url = 'https://he.wikipedia.org/wiki/ויקיפדיה:רשימת_מועמדים_למחיקה';
-      const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
-      const data = await response.json();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(data.contents, 'text/html');
+    async function fetchWikitext() {
+      const apiUrl = "https://he.wikipedia.org/w/api.php?action=query&prop=revisions&titles=ויקיפדיה:רשימת_מועמדים_למחיקה&rvprop=content&formatversion=2&format=json&origin=*";
+      const response = await fetch(apiUrl);
+      const json = await response.json();
+      const content = json.query.pages[0].revisions[0].content;
+      return content;
+    }
 
+    function parseVotes(wikitext) {
       const results = [];
-      const headings = [...doc.querySelectorAll('h3')];
+      const sections = wikitext.split('==').filter(s => s.includes("'''")); // חותכים לפי כותרות דיונים
 
-      for (const h3 of headings) {
-        const titleElement = h3.querySelector('.mw-headline');
-        if (!titleElement) continue;
+      for (let section of sections) {
+        const lines = section.split('\n');
+        const titleLine = lines.find(line => line.includes("'''"));
+        if (!titleLine) continue;
 
-        const title = titleElement.textContent.trim();
-        const pageTitle = title.replace(/\s*\(.*?\)/g, ''); // הסרת סוגריים מהשם
-        const pageUrl = `https://he.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/ /g, '_'))}`;
+        const match = titleLine.match(/'''([^']+)'''/);
+        const title = match ? match[1].trim() : null;
+        if (!title) continue;
 
-        let next = h3.nextElementSibling;
-        let support = 0;
-        let oppose = 0;
-
-        while (next && next.tagName !== 'H3') {
-          const text = next.textContent;
-          support += (text.match(/(?:{{)?למחוק(?:}})?/g) || []).length;
-          oppose += (text.match(/(?:{{)?לשמור(?:}})?|(?:{{)?להשאיר(?:}})?/g) || []).length;
-          next = next.nextElementSibling;
-        }
+        const support = (section.match(/{{למחוק}}|[^א-ת]למחוק[^א-ת]/g) || []).length;
+        const oppose = (section.match(/{{להשאיר}}|{{לשמור}}|[^א-ת]להשאיר[^א-ת]|[^א-ת]לשמור[^א-ת]/g) || []).length;
 
         if (support + oppose > 0) {
-          results.push({ title, pageUrl, support, oppose });
+          results.push({
+            title,
+            pageUrl: `https://he.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`,
+            support,
+            oppose
+          });
         }
       }
 
       return results;
     }
 
-    fetchDeletionVotes().then(data => {
-      const table = document.getElementById('results');
-      const tbody = table.querySelector('tbody');
-      const status = document.getElementById('status');
-      status.style.display = 'none';
-      table.style.display = 'table';
+    async function run() {
+      try {
+        const wikitext = await fetchWikitext();
+        const data = parseVotes(wikitext);
 
-      for (const row of data) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td><a href="${row.pageUrl}" target="_blank">${row.title}</a></td>
-          <td>${row.support}</td>
-          <td>${row.oppose}</td>
-        `;
-        tbody.appendChild(tr);
+        const table = document.getElementById('results');
+        const tbody = table.querySelector('tbody');
+        const status = document.getElementById('status');
+        status.style.display = 'none';
+        table.style.display = 'table';
+
+        data.forEach(row => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><a href="${row.pageUrl}" target="_blank">${row.title}</a></td>
+            <td>${row.support}</td>
+            <td>${row.oppose}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        if (data.length === 0) {
+          status.style.display = 'block';
+          status.innerText = 'לא נמצאו הצבעות פעילות כרגע.';
+          table.style.display = 'none';
+        }
+
+      } catch (error) {
+        document.getElementById('status').innerText = 'אירעה שגיאה בעת טעינת הנתונים.';
+        console.error(error);
       }
-    }).catch(err => {
-      document.getElementById('status').innerText = 'אירעה שגיאה בעת טעינת הנתונים.';
-      console.error(err);
-    });
+    }
+
+    run();
   </script>
 </body>
 </html>
