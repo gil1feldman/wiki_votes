@@ -2,16 +2,42 @@
 <html lang="he">
 <head>
   <meta charset="UTF-8">
-  <title>הצבעות מחיקה בויקיפדיה</title>
+  <title>הצבעות מחיקה פעילות</title>
   <style>
-    body { font-family: Arial, sans-serif; direction: rtl; padding: 20px; background-color: #f9f9f9; }
-    h1 { text-align: center; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; background-color: white; }
-    th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
-    th { background-color: #eaeaea; }
-    a { color: #0077cc; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    #status { text-align: center; font-size: 1.2em; }
+    body {
+      direction: rtl;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f8f8f8;
+    }
+    h1 {
+      text-align: center;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #e0e0e0;
+    }
+    a {
+      color: #0077cc;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    #status {
+      text-align: center;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -29,77 +55,64 @@
   </table>
 
   <script>
-    async function fetchWikitext() {
-      const apiUrl = "https://he.wikipedia.org/w/api.php?action=query&prop=revisions&titles=ויקיפדיה:רשימת_מועמדים_למחיקה&rvprop=content&formatversion=2&format=json&origin=*";
-      const response = await fetch(apiUrl);
-      const json = await response.json();
-      const content = json.query.pages[0].revisions[0].content;
-      return content;
+    const categoryTitle = "קטגוריה:ויקיפדיה: הצבעות מחיקה ושחזור";
+    const apiBase = "https://he.wikipedia.org/w/api.php?origin=*";
+
+    async function fetchCategoryPages(limit = 20) {
+      const res = await fetch(`${apiBase}&action=query&list=categorymembers&cmtitle=${encodeURIComponent(categoryTitle)}&cmlimit=${limit}&format=json`);
+      const data = await res.json();
+      return data.query.categorymembers;
     }
 
-    function parseVotes(wikitext) {
-      const results = [];
-      const sections = wikitext.split('==').filter(s => s.includes("'''")); // חותכים לפי כותרות דיונים
-
-      for (let section of sections) {
-        const lines = section.split('\n');
-        const titleLine = lines.find(line => line.includes("'''"));
-        if (!titleLine) continue;
-
-        const match = titleLine.match(/'''([^']+)'''/);
-        const title = match ? match[1].trim() : null;
-        if (!title) continue;
-
-        const support = (section.match(/{{למחוק}}|[^א-ת]למחוק[^א-ת]/g) || []).length;
-        const oppose = (section.match(/{{להשאיר}}|{{לשמור}}|[^א-ת]להשאיר[^א-ת]|[^א-ת]לשמור[^א-ת]/g) || []).length;
-
-        if (support + oppose > 0) {
-          results.push({
-            title,
-            pageUrl: `https://he.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`,
-            support,
-            oppose
-          });
-        }
-      }
-
-      return results;
+    async function fetchWikitext(title) {
+      const res = await fetch(`${apiBase}&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvprop=content&formatversion=2&format=json`);
+      const data = await res.json();
+      return data.query.pages[0].revisions[0].content;
     }
 
-    async function run() {
+    function countVotes(wikitext) {
+      const support = (wikitext.match(/{{למחוק}}/g) || []).length;
+      const oppose = (wikitext.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
+      return { support, oppose };
+    }
+
+    async function loadVotes() {
+      const status = document.getElementById("status");
+      const table = document.getElementById("results");
+      const tbody = table.querySelector("tbody");
+
       try {
-        const wikitext = await fetchWikitext();
-        const data = parseVotes(wikitext);
+        const pages = await fetchCategoryPages(20);
+        for (const page of pages) {
+          const wikitext = await fetchWikitext(page.title);
+          const { support, oppose } = countVotes(wikitext);
 
-        const table = document.getElementById('results');
-        const tbody = table.querySelector('tbody');
-        const status = document.getElementById('status');
-        status.style.display = 'none';
-        table.style.display = 'table';
+          if (support + oppose === 0) continue; // דלג אם אין הצבעות בכלל
 
-        data.forEach(row => {
-          const tr = document.createElement('tr');
+          const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td><a href="${row.pageUrl}" target="_blank">${row.title}</a></td>
-            <td>${row.support}</td>
-            <td>${row.oppose}</td>
+            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(page.title)}" target="_blank">${page.title.replace("ויקיפדיה:רשימת מועמדים למחיקה/", "")}</a></td>
+            <td>${support}</td>
+            <td>${oppose}</td>
           `;
           tbody.appendChild(tr);
-        });
+        }
 
-        if (data.length === 0) {
-          status.style.display = 'block';
-          status.innerText = 'לא נמצאו הצבעות פעילות כרגע.';
-          table.style.display = 'none';
+        status.style.display = "none";
+        table.style.display = "table";
+
+        if (tbody.children.length === 0) {
+          status.innerText = "לא נמצאו הצבעות פעילות.";
+          status.style.display = "block";
         }
 
       } catch (error) {
-        document.getElementById('status').innerText = 'אירעה שגיאה בעת טעינת הנתונים.';
         console.error(error);
+        status.innerText = "אירעה שגיאה בעת טעינת הנתונים.";
       }
     }
 
-    run();
+    loadVotes();
   </script>
 </body>
 </html>
