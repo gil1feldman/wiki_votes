@@ -62,11 +62,11 @@
 
   <script>
     async function fetchCategoryPageHTML() {
-      const url = "https://api.allorigins.win/get?url=" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
+      const url = "https://corsproxy.io/?" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
       const res = await fetch(url);
-      const data = await res.json();
+      const html = await res.text();
       const parser = new DOMParser();
-      return parser.parseFromString(data.contents, "text/html");
+      return parser.parseFromString(html, "text/html");
     }
 
     async function fetchWikitext(title) {
@@ -74,7 +74,7 @@
       const res = await fetch(apiUrl);
       const data = await res.json();
       const page = data.query.pages[0];
-      return page.revisions[0].slots.main.content;
+      return page.revisions?.[0]?.slots?.main?.content || '';
     }
 
     function extractVotingSection(wikitext) {
