@@ -2,16 +2,20 @@
 <html lang="he">
 <head>
   <meta charset="UTF-8">
-  <title>הצבעות מחיקה פעילות</title>
+  <title>הצבעות מחיקה בויקיפדיה</title>
   <style>
     body {
       direction: rtl;
       font-family: Arial, sans-serif;
       padding: 20px;
-      background-color: #f8f8f8;
+      background-color: #f5f5f5;
     }
     h1 {
       text-align: center;
+    }
+    #status {
+      text-align: center;
+      margin-top: 20px;
     }
     table {
       width: 100%;
@@ -21,22 +25,18 @@
     }
     th, td {
       border: 1px solid #ccc;
-      padding: 10px;
+      padding: 8px;
       text-align: center;
     }
     th {
       background-color: #e0e0e0;
     }
     a {
-      color: #0077cc;
+      color: #0066cc;
       text-decoration: none;
     }
     a:hover {
       text-decoration: underline;
-    }
-    #status {
-      text-align: center;
-      margin-top: 20px;
     }
   </style>
 </head>
@@ -55,19 +55,20 @@
   </table>
 
   <script>
-    const categoryTitle = "קטגוריה:ויקיפדיה: הצבעות מחיקה ושחזור";
     const apiBase = "https://he.wikipedia.org/w/api.php?origin=*";
 
     async function fetchCategoryPages(limit = 20) {
-      const res = await fetch(`${apiBase}&action=query&list=categorymembers&cmtitle=${encodeURIComponent(categoryTitle)}&cmlimit=${limit}&format=json`);
+      const url = `${apiBase}&action=query&list=categorymembers&cmtitle=קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור&cmlimit=${limit}&format=json`;
+      const res = await fetch(url);
       const data = await res.json();
       return data.query.categorymembers;
     }
 
     async function fetchWikitext(title) {
-      const res = await fetch(`${apiBase}&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvprop=content&formatversion=2&format=json`);
+      const url = `${apiBase}&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
+      const res = await fetch(url);
       const data = await res.json();
-      return data.query.pages[0].revisions[0].content;
+      return data.query.pages[0].revisions[0].slots.main.content;
     }
 
     function countVotes(wikitext) {
@@ -76,43 +77,43 @@
       return { support, oppose };
     }
 
-    async function loadVotes() {
+    async function run() {
       const status = document.getElementById("status");
       const table = document.getElementById("results");
       const tbody = table.querySelector("tbody");
 
       try {
-        const pages = await fetchCategoryPages(20);
+        const pages = await fetchCategoryPages();
         for (const page of pages) {
           const wikitext = await fetchWikitext(page.title);
           const { support, oppose } = countVotes(wikitext);
 
-          if (support + oppose === 0) continue; // דלג אם אין הצבעות בכלל
+          if (support + oppose === 0) continue;
 
+          const displayTitle = page.title.replace("ויקיפדיה:רשימת מועמדים למחיקה/", "");
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(page.title)}" target="_blank">${page.title.replace("ויקיפדיה:רשימת מועמדים למחיקה/", "")}</a></td>
+            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(page.title)}" target="_blank">${displayTitle}</a></td>
             <td>${support}</td>
             <td>${oppose}</td>
           `;
           tbody.appendChild(tr);
         }
 
-        status.style.display = "none";
-        table.style.display = "table";
-
-        if (tbody.children.length === 0) {
-          status.innerText = "לא נמצאו הצבעות פעילות.";
-          status.style.display = "block";
+        if (tbody.children.length > 0) {
+          status.style.display = "none";
+          table.style.display = "table";
+        } else {
+          status.textContent = "לא נמצאו הצבעות פעילות.";
         }
 
       } catch (error) {
+        status.textContent = "אירעה שגיאה בטעינת הנתונים.";
         console.error(error);
-        status.innerText = "אירעה שגיאה בעת טעינת הנתונים.";
       }
     }
 
-    loadVotes();
+    run();
   </script>
 </body>
 </html>
