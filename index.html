@@ -48,7 +48,7 @@
 </head>
 <body>
   <h1>הצבעות מחיקה פעילות בויקיפדיה</h1>
-  <div id="status">טוען נתונים...</div>
+  <div id="status">טוען נתונים מדף הקטגוריה...</div>
   <table id="results" style="display:none">
     <thead>
       <tr>
@@ -61,18 +61,17 @@
   </table>
 
   <script>
-    const apiBase = "https://he.wikipedia.org/w/api.php?origin=*";
-
-    async function fetchCategoryPages(limit = 20) {
-      const url = `${apiBase}&action=query&list=categorymembers&cmtitle=קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור&cmlimit=${limit}&format=json`;
+    async function fetchCategoryPageHTML() {
+      const url = "https://api.allorigins.win/get?url=" + encodeURIComponent("https://he.wikipedia.org/wiki/קטגוריה:ויקיפדיה:_הצבעות_מחיקה_ושחזור");
       const res = await fetch(url);
       const data = await res.json();
-      return data.query.categorymembers;
+      const parser = new DOMParser();
+      return parser.parseFromString(data.contents, "text/html");
     }
 
     async function fetchWikitext(title) {
-      const url = `${apiBase}&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
-      const res = await fetch(url);
+      const apiUrl = `https://he.wikipedia.org/w/api.php?origin=*&action=query&prop=revisions&titles=${encodeURIComponent(title)}&rvslots=main&rvprop=content&formatversion=2&format=json`;
+      const res = await fetch(apiUrl);
       const data = await res.json();
       const page = data.query.pages[0];
       return page.revisions[0].slots.main.content;
@@ -81,17 +80,15 @@
     function extractVotingSection(wikitext) {
       const start = wikitext.indexOf('== הצבעה ==');
       if (start === -1) return null;
-
       const rest = wikitext.slice(start + '== הצבעה =='.length);
       const endMatch = rest.match(/==\s.*?==/);
       const end = endMatch ? rest.indexOf(endMatch[0]) : rest.length;
-
       return rest.slice(0, end).trim();
     }
 
-    function countVotes(votingText) {
-      const support = (votingText.match(/{{למחוק}}/g) || []).length;
-      const oppose = (votingText.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
+    function countVotes(text) {
+      const support = (text.match(/{{למחוק}}/g) || []).length;
+      const oppose = (text.match(/{{להשאיר}}|{{לשמור}}/g) || []).length;
       return { support, oppose };
     }
 
@@ -101,16 +98,23 @@
       const tbody = table.querySelector("tbody");
 
       try {
-        const pages = await fetchCategoryPages();
-        for (const page of pages) {
-          const wikitext = await fetchWikitext(page.title);
+        const doc = await fetchCategoryPageHTML();
+        const links = [...doc.querySelectorAll("#mw-pages a")];
+        if (links.length === 0) {
+          status.textContent = "לא נמצאו הצבעות פעילות.";
+          return;
+        }
+
+        for (const a of links) {
+          const pageTitle = a.title;
+          const displayTitle = a.textContent;
+          const wikitext = await fetchWikitext(pageTitle);
           const votingSection = extractVotingSection(wikitext);
           if (!votingSection) continue;
 
           const { support, oppose } = countVotes(votingSection);
           if (support + oppose === 0) continue;
 
-          const displayTitle = page.title.replace("ויקיפדיה:רשימת מועמדים למחיקה/", "");
           const tr = document.createElement("tr");
           if (support > oppose) {
             tr.classList.add("majority-delete");
@@ -119,7 +123,7 @@
           }
 
           tr.innerHTML = `
-            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(page.title)}" target="_blank">${displayTitle}</a></td>
+            <td><a href="https://he.wikipedia.org/wiki/${encodeURIComponent(pageTitle)}" target="_blank">${displayTitle}</a></td>
             <td>${support}</td>
             <td>${oppose}</td>
           `;
@@ -133,9 +137,9 @@
           status.textContent = "לא נמצאו הצבעות פעילות.";
         }
 
-      } catch (error) {
+      } catch (e) {
+        console.error(e);
         status.textContent = "אירעה שגיאה בטעינת הנתונים.";
-        console.error(error);
       }
     }
 
